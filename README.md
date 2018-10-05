@@ -1,4 +1,4 @@
-**Pre-requisite** - place your OCI API private key in src/resources (rename it to `oci_api_key.pem`)
+**Pre-requisite** - place your OCI API private key in `src/resources` directory (rename it to `oci_api_key.pem`)
 
 > as of now, the image which is been re-sized (`fn-background-sample.png`) is packaged with the app - it's in the `src/resources` directory 
 
