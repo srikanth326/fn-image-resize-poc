@@ -1,0 +1,13 @@
+schema_version: 20180708
+name: fn-image-resize
+version: 0.0.1
+runtime: java
+build_image: abhirockzz/oci-java-sdk
+run_image: fnproject/fn-java-fdk:jdk9-1.0.70
+format: http-stream
+cmd: io.fnproject.example.ResizeImage::handle
+timeout: 100
+triggers:
+- name: resize
+  type: http
+  source: /resize
