@@ -6,12 +6,11 @@
         <fdk.version>1.0.70</fdk.version>
     </properties>
     <groupId>io.fnproject.example</groupId>
-    <artifactId>fn-image-resize</artifactId>
+    <artifactId>fn-x-region-image-resize</artifactId>
     <version>1.0.0</version>
     
     <repositories>
         <repository>
-
             <id>fn-release-repo</id>
             <url>https://dl.bintray.com/fnproject/fnproject</url>
             <releases>
@@ -20,6 +19,20 @@
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
+        </repository>
+        <repository>
+            <id>oci-release-repo</id>
+            <url>http://artifactory.aka.lgl.grungy.us/libs-release/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>projectlombok.org</id>
+            <url>https://projectlombok.org/edge-releases</url>
         </repository>
         <repository>
             <id>project.local</id>
@@ -81,6 +94,35 @@
             <groupId>com.fnproject.fn</groupId>
             <artifactId>api</artifactId>
             <version>${fdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fnproject.fn</groupId>
+            <artifactId>testing-core</artifactId>
+            <version>${fdk.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fnproject.fn</groupId>
+            <artifactId>testing-junit4</artifactId>
+            <version>${fdk.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.12</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>edge-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.oracle.pic.events</groupId>
+            <artifactId>event-ingestion-service-java-client</artifactId>
+            <version>0.1.7</version>
         </dependency>
     </dependencies>    
     <build>

@@ -1,13 +1,17 @@
 package io.fnproject.example;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Supplier;
 
 import com.oracle.bmc.auth.AuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
 import com.oracle.bmc.objectstorage.ObjectStorage;
 import com.oracle.bmc.objectstorage.ObjectStorageClient;
+import com.oracle.bmc.objectstorage.requests.GetObjectRequest;
 import com.oracle.bmc.objectstorage.requests.PutObjectRequest;
+import com.oracle.bmc.objectstorage.responses.GetObjectResponse;
 import com.oracle.bmc.objectstorage.responses.PutObjectResponse;
+import com.oracle.pic.events.model.EventV01;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -26,10 +30,11 @@ import javax.imageio.ImageIO;
 
 public class ResizeImage {
 
-    private ObjectStorage objStoreClient = null;
+    public ObjectStorage ConstructObjectStorageClient(ObjectStorageObjectEvent objectStorageObjectEvent, String region) {
+        System.out.println("Inside ConstructObjectStorageClient");
 
-    public ResizeImage() {
-        System.err.println("Inside ResizeImage ctor");
+        ObjectStorage objStoreClient = null;
+
         try {
             String privateKey = System.getenv().getOrDefault("OCI_PRIVATE_KEY_FILE_NAME", "oci_api_key.pem");
             System.err.println("Private key " + privateKey);
@@ -39,54 +44,84 @@ public class ResizeImage {
 
             AuthenticationDetailsProvider provider
                     = SimpleAuthenticationDetailsProvider.builder()
-                            .tenantId(System.getenv().get("TENANCY"))
-                            .userId(System.getenv().get("USER"))
-                            .fingerprint(System.getenv().get("FINGERPRINT"))
-                            .passPhrase(System.getenv().get("PASSPHRASE"))
-                            .privateKeySupplier(privateKeySupplierFromJAR)
-                            .build();
+                    .tenantId(System.getenv().get("TENANCY"))
+                    .userId(System.getenv().get("USER"))
+                    .fingerprint(System.getenv().get("FINGERPRINT"))
+                    .passPhrase(System.getenv().get("PASSPHRASE"))
+                    .privateKeySupplier(privateKeySupplierFromJAR)
+                    .build();
 
             System.err.println("AuthenticationDetailsProvider setup");
 
             objStoreClient = new ObjectStorageClient(provider);
-            objStoreClient.setRegion(System.getenv().get("REGION"));
+            objStoreClient.setRegion(region);
+            //objStoreClient.setRegion(System.getenv().get("REGION"));
 
-            System.err.println("ObjectStorage client setup");
+
+            System.out.println("ObjectStorage client setup");
         } catch (Exception ex) {
             //just for better debugging (temporary)
             System.err.println("Error occurred in ResizeImage ctor " + ex.getMessage());
             StringWriter writer = new StringWriter();
             PrintWriter printWriter = new PrintWriter(writer);
             ex.printStackTrace(printWriter);
-            ctorEx = writer.toString();
+            constructionException = writer.toString();
         }
+        return objStoreClient;
     }
 
-    
-    //track exception which occurred in constructor
-    String ctorEx = null;
 
-    public String handle() {
-        System.err.println("Inside ObjectStorePutFunction/handle");
+    //track exception which occurred in constructor
+    String constructionException = null;
+
+    public String handle(EventV01 cloudEvent) {
+
+        System.out.println("Inside ObjectStorePutFunction/handle");
+        System.out.println("Event Received: " + cloudEvent.toString());
         String result = "FAILED";
 
-        if (objStoreClient == null) {
-            //return result;
-            return ctorEx;
-        }
         try {
+            ObjectMapper mapper = new ObjectMapper();
+            String fromObject = mapper.writeValueAsString(cloudEvent.getData());
+            ObjectStorageObjectEvent objectStorageObjectEvent = mapper.readValue(fromObject, ObjectStorageObjectEvent.class);
 
-            String nameSpace = System.getenv().getOrDefault("NAMESPACE", "odx-jafar");
-            String originalImageName = System.getenv().getOrDefault("IMAGE_NAME", "fn-background-sample.png");
-            //String originalImageLocation = System.getenv().getOrDefault("IMAGE_LOC", "/function");
-            String bucketName = System.getenv().getOrDefault("BUCKET_NAME", "images");
+            String sourceRegion = System.getenv().getOrDefault("SOURCE_REGION", "us-phoenix-1");
+            String destRegion = System.getenv().getOrDefault("DEST_REGION", "us-ashburn-1");
+
+            ObjectStorage objStoreClientSource = ConstructObjectStorageClient(objectStorageObjectEvent, sourceRegion);
+            if (objStoreClientSource == null) {
+                //return result;
+                return constructionException;
+            }
+
+            ObjectStorage objStoreClientDest = ConstructObjectStorageClient(objectStorageObjectEvent, destRegion);
+            if (objStoreClientDest == null) {
+                //return result;
+                return constructionException;
+            }
+
+
+
+            // TODO: get the namespace from the event
+            String nameSpace = System.getenv().getOrDefault("NAMESPACE", "ocimiddleware");
+
+            // fetch the object
+            GetObjectResponse getResponse =
+                    objStoreClientSource.getObject(
+                            GetObjectRequest.builder()
+                                    .namespaceName(nameSpace)
+                                    .bucketName(objectStorageObjectEvent.getBucketName())
+                                    .objectName(objectStorageObjectEvent.getObjectName())
+                                    .build());
+
+
             int scaleDimension = 400;
             String targetImageType = "jpg";
-            String resizedImageName = PREFIX + "-" + originalImageName + "-" + scaleDimension + "-" + new Date() + "." + targetImageType;
+            String resizedImageName = PREFIX + "-" + objectStorageObjectEvent.getObjectName() + "-" + scaleDimension + "-" + new Date() + "." + targetImageType;
 
-            System.out.println("Resizing image " + originalImageName + " to " + resizedImageName);
+            System.out.println("Resizing image " + objectStorageObjectEvent.getObjectName() + " to " + resizedImageName);
 
-            InputStream objectData = ResizeImage.class.getResourceAsStream("/" + originalImageName);
+            InputStream objectData = getResponse.getInputStream();
             BufferedImage srcImage = ImageIO.read(objectData);
             int srcHeight = srcImage.getHeight();
             int srcWidth = srcImage.getWidth();
@@ -110,16 +145,18 @@ public class ResizeImage {
 
             System.out.println("Pushing to object store...");
 
+            String destBucketName = System.getenv().getOrDefault("DEST_BUCKET_NAME", objectStorageObjectEvent.getBucketName());
+
             PutObjectRequest por = PutObjectRequest.builder()
                     .namespaceName(nameSpace)
-                    .bucketName(bucketName)
+                    .bucketName(destBucketName)
                     .objectName(resizedImageName)
                     .putObjectBody(resizedImageObject)
                     .build();
 
-            PutObjectResponse poResp = objStoreClient.putObject(por);
+            PutObjectResponse poResp = objStoreClientDest.putObject(por);
             result = "OPC ID for upload operation for object " + resizedImageName + " - " + poResp.getOpcRequestId();
-            System.out.println("Pushed to object store " + result);
+            System.out.println("Pushed to object store " + result + "\n");
 
         } catch (Exception e) {
             System.err.println("Error invoking object store API " + e.getMessage());
@@ -131,9 +168,9 @@ public class ResizeImage {
 
     static String PREFIX = "scaled-";
 
-  
+
     public static BufferedImage scaledImg(BufferedImage img, int targetWidth,
-            int targetHeight, Object hint) {
+                                          int targetHeight, Object hint) {
 
         System.out.println("scaledImg() start");
         int type = BufferedImage.TYPE_INT_RGB;
